@@ -17,6 +17,62 @@
     <!--    android:paddingTop="?attr/actionBarSize">-->
 
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#000000"
+        android:orientation="vertical"
+        android:paddingLeft="20px"
+        android:textAlignment="inherit">
+
+        <TextView
+            android:id="@+id/txt_framerate_vlc"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#000000"
+            android:fontFamily="sans-serif"
+            android:text="30ms"
+            android:textAlignment="textStart"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp" />
+
+        <TextView
+            android:id="@+id/txt_fps_vlc"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#000000"
+            android:fontFamily="sans-serif"
+            android:text="30 fps"
+            android:textAlignment="textStart"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp" />
+
+        <TextView
+            android:id="@+id/txt_framerate_cam"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#000000"
+            android:fontFamily="sans-serif"
+            android:text="30ms"
+            android:textAlignment="textStart"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/txt_fps_cam"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#000000"
+            android:fontFamily="sans-serif"
+            android:text="30 fps"
+            android:textAlignment="textStart"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
     <TextureView
         android:id="@+id/textureView"
         android:layout_width="match_parent"
@@ -40,8 +96,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
-    </FrameLayout>
+        app:layout_constraintTop_toTopOf="parent"></FrameLayout>
 
     <LinearLayout
         android:id="@+id/layout_buttons"
@@ -81,12 +136,6 @@
             android:backgroundTint="#4E4848"
             android:text="Gallery" />
 
-        <Button
-            android:id="@+id/btn_capture"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Capture" />
     </LinearLayout>
 
 <!--</androidx.constraintlayout.widget.ConstraintLayout>-->

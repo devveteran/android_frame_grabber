@@ -3,6 +3,7 @@ package com.example.streamerapp
 //import android.app.Fragment
 import android.content.ContentValues
 import android.content.Context
+import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -17,6 +18,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
+import android.text.InputType
 import android.util.Log
 import android.util.Size
 import android.view.Surface
@@ -24,19 +26,24 @@ import android.view.TextureView
 import android.view.TextureView.SurfaceTextureListener
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts.GetContent
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import com.example.streamerapp.databinding.ActivityMainBinding
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
-import org.videolan.libvlc.interfaces.IVLCVout
+import org.w3c.dom.Text
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
 import java.util.*
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.DurationUnit
 
 enum class STATUS {
     STS_IDLE,
@@ -53,17 +60,30 @@ class MainActivity : AppCompatActivity(), View.OnClickListener,
     lateinit var libVlc: LibVLC
     lateinit var mediaPlayer: MediaPlayer
 
-//    private var rtsp_url: String = "rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mp4"
     private var rtspUrl: String = "rtsp://192.168.106.160:8554/"
 
     private lateinit var mTextureView: TextureView
     private lateinit var cameraLayout: FrameLayout
 
-    private lateinit var btn_stream: Button
-    private lateinit var btn_camera: Button
-    private lateinit var btn_gallery: Button
+    private lateinit var btnStream: Button
+    private lateinit var btnCamera: Button
+    private lateinit var btnGallery: Button
 
-    private lateinit var btn_capture: Button
+    private var prevTimeVLC: Long = 0
+    private var prevTimeCAM: Long = 0
+
+    private var timeCounterVLC: Long = 0
+    private var timeCounterCAM: Long = 0
+
+    private var fpsVLC: Int = 0
+    private var fpsCAM: Int = 0
+
+    private lateinit var txtPrevTimeVLC: TextView
+    private lateinit var txtPrevTimeCAM: TextView
+
+    private lateinit var txtFPSVLC: TextView
+    private lateinit var txtFPSCAM: TextView
+
     private var counter : Int = 0
 
     private var status: STATUS = STATUS.STS_IDLE
@@ -86,7 +106,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener,
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        supportActionBar?.hide()
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -94,19 +114,17 @@ class MainActivity : AppCompatActivity(), View.OnClickListener,
         libVlc = LibVLC(this)
         mediaPlayer = MediaPlayer(libVlc)
         mTextureView = findViewById(R.id.textureView)
-//        attachViewSurface()
 
-
-
-        btn_stream = findViewById(R.id.btn_stream)
-        btn_stream.setOnClickListener(this)
-        btn_camera = findViewById(R.id.btn_camera)
-        btn_camera.setOnClickListener(this)
-        btn_gallery = findViewById(R.id.btn_gallery)
-        btn_gallery.setOnClickListener(this)
-        btn_capture = findViewById(R.id.btn_capture)
-        btn_capture.setOnClickListener(this)
-
+        btnStream = findViewById(R.id.btn_stream)
+        btnStream.setOnClickListener(this)
+        btnCamera = findViewById(R.id.btn_camera)
+        btnCamera.setOnClickListener(this)
+        btnGallery = findViewById(R.id.btn_gallery)
+        btnGallery.setOnClickListener(this)
+        txtPrevTimeVLC = findViewById(R.id.txt_framerate_vlc)
+        txtPrevTimeCAM = findViewById(R.id.txt_framerate_cam)
+        txtFPSVLC = findViewById(R.id.txt_fps_vlc)
+        txtFPSCAM = findViewById(R.id.txt_fps_cam)
 
         // Set for Phone Camera
         cameraLayout = findViewById(R.id.cameraLayout)
@@ -177,11 +195,13 @@ class MainActivity : AppCompatActivity(), View.OnClickListener,
     }
 
     private fun attachViewSurface () {
-        mediaPlayer.vlcVout.setVideoView(mTextureView)
-        mediaPlayer.vlcVout.setWindowSize(mTextureView.width, mTextureView.height)
-        mediaPlayer.vlcVout.attachViews()
-        mTextureView.keepScreenOn = true
-        mTextureView.surfaceTextureListener = this
+        if (!mediaPlayer.vlcVout.areViewsAttached()) {
+            mediaPlayer.vlcVout.setVideoView(mTextureView)
+            mediaPlayer.vlcVout.setWindowSize(mTextureView.width, mTextureView.height)
+            mediaPlayer.vlcVout.attachViews()
+            mTextureView.keepScreenOn = true
+            mTextureView.surfaceTextureListener = this
+        }
     }
 
     private fun playStream() {
@@ -193,7 +213,6 @@ class MainActivity : AppCompatActivity(), View.OnClickListener,
         mediaPlayer.media = media
         media.release()
         mediaPlayer.play()
-
     }
 
     private fun stopStream() {
@@ -209,42 +228,78 @@ class MainActivity : AppCompatActivity(), View.OnClickListener,
     }
 
     override fun onClick(p0: View?) {
-        Log.d("", p0!!.id.toString())
+        prevTimeCAM = 0
+        prevTimeVLC = 0
+        timeCounterVLC = 0
+        timeCounterCAM = 0
+        fpsCAM = 0
+        fpsVLC = 0
+
         if (p0!!.id == R.id.btn_stream) {
+            if (status == STATUS.STS_STREAM)
+                return
+
             mTextureView.visibility = View.VISIBLE
             cameraLayout.visibility = View.GONE
+            txtPrevTimeCAM.visibility = View.GONE
+            txtPrevTimeVLC.visibility = View.VISIBLE
+            txtFPSVLC.visibility = View.VISIBLE
+            txtFPSCAM.visibility = View.GONE
 
-            if (status != STATUS.STS_STREAM) {
+            attachViewSurface()
+
+            var builder: AlertDialog.Builder = AlertDialog.Builder(this)
+            builder.setTitle("Enter a RTSP url")
+            val inputbox: EditText = EditText(this)
+            inputbox.inputType = InputType.TYPE_CLASS_TEXT
+            builder.setView(inputbox)
+
+            builder.setPositiveButton("OK") { dialog, which ->
+                rtspUrl = inputbox.text.toString()
+                counter = 0
                 playStream()
                 status = STATUS.STS_STREAM
-            } else {
-                stopStream()
-                status = STATUS.STS_IDLE
             }
+            builder.setNegativeButton("Cancel") {_, _ -> }
+            builder.show()
         } else if (p0!!.id == R.id.btn_camera) {
-            mTextureView.visibility = View.GONE
+            if (status == STATUS.STS_CAMERA)
+                return
             cameraLayout.visibility = View.VISIBLE
-            if (status != STATUS.STS_CAMERA) {
-                setCameraFragment()
-                status = STATUS.STS_CAMERA
-            } else {
+            mTextureView.visibility = View.GONE
+
+            if (!supportFragmentManager.beginTransaction().isEmpty)
                 supportFragmentManager.beginTransaction().remove(fragment)
-                status = STATUS.STS_IDLE
-            }
+            setCameraFragment()
+
+            status = STATUS.STS_CAMERA
+
+            txtPrevTimeCAM.visibility = View.VISIBLE
+            txtPrevTimeVLC.visibility = View.GONE
+            txtFPSCAM.visibility = View.VISIBLE
+            txtFPSVLC.visibility = View.GONE
+
+            counter = 0
         } else if (p0!!.id == R.id.btn_gallery) {
-            attachViewSurface()
+            if (status == STATUS.STS_GALLERY)
+                return
+            status = STATUS.STS_GALLERY
+
             mTextureView.visibility = View.VISIBLE
             cameraLayout.visibility = View.GONE
+            txtPrevTimeCAM.visibility = View.GONE
+            txtPrevTimeVLC.visibility = View.VISIBLE
+            txtFPSVLC.visibility = View.VISIBLE
+            txtFPSCAM.visibility = View.GONE
+
+            attachViewSurface()
+
             resultLauncher.launch("video/*")
-            counter = 0
-        } else if (p0!!.id == R.id.btn_capture) {
             counter = 0
         }
     }
 
     override fun onSurfaceTextureAvailable(p0: SurfaceTexture, p1: Int, p2: Int) {
-//        if (mediaPlayer.hasMedia())
-//            mediaPlayer.play()
     }
 
     override fun onSurfaceTextureSizeChanged(p0: SurfaceTexture, p1: Int, p2: Int) {
@@ -256,6 +311,21 @@ class MainActivity : AppCompatActivity(), View.OnClickListener,
     }
 
     override fun onSurfaceTextureUpdated(p0: SurfaceTexture) {
+        val current: Long = Calendar.getInstance().time.time
+        if (prevTimeVLC > 0) {
+            val latency = current - prevTimeVLC
+            txtPrevTimeVLC.text = latency.milliseconds.toString()
+            timeCounterVLC += latency.milliseconds.toLong(DurationUnit.MILLISECONDS)
+            fpsVLC += 1
+            if (timeCounterVLC >= 1000) {
+                txtFPSVLC.text = "$fpsVLC fps"
+                fpsVLC = 0
+                timeCounterVLC = 0
+            }
+        }
+
+        prevTimeVLC = current
+
         if (counter < 5) {
             if (mTextureView.bitmap != null)
                 saveImageToStorage(mTextureView.bitmap!!, "gallery")
@@ -308,6 +378,19 @@ class MainActivity : AppCompatActivity(), View.OnClickListener,
                 image.close()
                 isProcessingFrame = false
             }
+            val current2: Long = Calendar.getInstance().time.time
+            if (prevTimeCAM > 0) {
+                val latency = current2 - prevTimeCAM
+                txtPrevTimeCAM.text = latency.milliseconds.toString()
+                timeCounterCAM += latency.milliseconds.toLong(DurationUnit.MILLISECONDS)
+                fpsCAM += 1
+                if (timeCounterCAM >= 1000) {
+                    txtFPSCAM.text = "$fpsCAM fps"
+                    fpsCAM = 0
+                    timeCounterCAM = 0
+                }
+            }
+            prevTimeCAM = current2
             processImage()
         } catch (e: Exception) {
             return
@@ -350,6 +433,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener,
         imageConverter!!.run()
         rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Bitmap.Config.ARGB_8888)
         rgbFrameBitmap?.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight)
+
         if (counter < 5) {
             saveImageToStorage(rgbFrameBitmap as Bitmap, "frame")
             counter += 1
